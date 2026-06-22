@@ -13,13 +13,13 @@ const fetchWikipediaImage = async (query) => {
   try {
     const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&srlimit=1`;
     const searchRes = await axios.get(searchUrl, { headers: { 'User-Agent': 'TravelItineraryApp/1.0' } });
-    
+
     if (searchRes.data?.query?.search?.length > 0) {
       const title = searchRes.data.query.search[0].title;
-      
+
       const imgUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&format=json&pithumbsize=800`;
       const imgRes = await axios.get(imgUrl, { headers: { 'User-Agent': 'TravelItineraryApp/1.0' } });
-      
+
       const pages = imgRes.data?.query?.pages;
       if (pages) {
         const pageId = Object.keys(pages)[0];
@@ -38,7 +38,7 @@ const fetchPlaceImageFallback = async (query) => {
   // 1. Try Wikipedia first (highly accurate for landmarks)
   const wikiImage = await fetchWikipediaImage(query);
   if (wikiImage) return wikiImage;
-  
+
   // 2. Fallback to dynamic Flickr image
   const safeQuery = query.replace(/[^a-zA-Z0-9]/g, ',');
   return `https://loremflickr.com/800/600/${safeQuery}/all`;
@@ -55,21 +55,19 @@ const callGroq = async (prompt) => {
 
     const text = response.choices[0].message.content;
 
-    // Clean up potential markdown formatting
-    let cleanedText = text;
-    if (cleanedText.startsWith('```json')) {
-      cleanedText = cleanedText.substring(7);
-      if (cleanedText.endsWith('```')) {
-        cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-      }
-    } else if (cleanedText.startsWith('```')) {
-      cleanedText = cleanedText.substring(3);
-      if (cleanedText.endsWith('```')) {
-        cleanedText = cleanedText.substring(0, cleanedText.length - 3);
-      }
+    // Extract JSON from the response
+    let cleanedText = text.trim();
+    const jsonMatch = cleanedText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (jsonMatch) {
+      cleanedText = jsonMatch[0];
     }
 
-    return JSON.parse(cleanedText.trim());
+    try {
+      return JSON.parse(cleanedText);
+    } catch (parseError) {
+      console.error("Failed to parse JSON. Raw response from Groq:", text);
+      throw parseError;
+    }
   } catch (error) {
     console.error("Groq error:", error.message);
     throw error;
@@ -137,7 +135,7 @@ JSON FORMAT:
 
   try {
     const itinerary = await callGroq(prompt);
-    
+
     // Concurrently fetch real images for all hotels
     if (itinerary.hotels) {
       await Promise.all(itinerary.hotels.map(async (hotel) => {
@@ -146,7 +144,7 @@ JSON FORMAT:
         if (realUrl) hotel.imageUrl = realUrl;
       }));
     }
-    
+
     return itinerary;
   } catch (error) {
     return generateMockItinerary(destination, startDate, endDate);
