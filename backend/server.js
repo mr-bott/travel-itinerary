@@ -18,9 +18,30 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/itinerary', itineraryRoutes);
 app.use('/api/auth', authRoutes);
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+// Health check with DB status
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbState = mongoose.connection.readyState;
+    const dbStatus = dbState === 1 ? 'Connected' : 'Disconnected';
+    
+    // Ping the database to ensure connection is active
+    if (dbState === 1) {
+      await mongoose.connection.db.admin().ping();
+    }
+    
+    res.json({ 
+      status: 'OK', 
+      message: 'Server is running', 
+      database: dbStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      message: 'Health check failed',
+      error: error.message
+    });
+  }
 });
 
 // Start server even if MongoDB connection fails (for development)
